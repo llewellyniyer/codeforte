@@ -1,8 +1,17 @@
 // Making Connection
-const socket = io.connect("http://localhost:3000");
-socket.emit("joined");
+const PORT = 3001
+const socket = io.connect(`http://localhost:${PORT}`);
+
+function encryptMessage(message, key) {
+  return CryptoJS.AES.encrypt(JSON.stringify(message), key).toString();
+}
+
+function decryptMessage(encryptedMessage, key) {
+ return JSON.parse(CryptoJS.AES.decrypt(encryptedMessage, key).toString(CryptoJS.enc.Utf8));
+}
 
 let players = []; // All players in the game
+let room = '';
 let currentPlayer; // Player object for individual players
 
 let canvas = document.getElementById("canvas");
@@ -43,8 +52,9 @@ const snakes = [
 ];
 
 class Player {
-  constructor(id, name, pos, img) {
+  constructor(room, pos, id = null, name = null, img = null) {
     this.id = id;
+    this.room = room;
     this.name = name;
     this.pos = pos;
     this.img = img;
@@ -63,10 +73,11 @@ class Player {
   }
 
   updatePos(num) {
-    if (this.pos + num <= 99) {
-      this.pos += num;
-      this.pos = this.isLadderOrSnake(this.pos + 1) - 1;
+    const newpos = this.pos + num;
+    if (newpos <= 99) {
+      return this.isLadderOrSnake(newpos + 1) - 1;
     }
+    return this.pos
   }
 
   isLadderOrSnake(pos) {
@@ -91,25 +102,27 @@ class Player {
 }
 
 document.getElementById("start-btn").addEventListener("click", () => {
-  const name = document.getElementById("name").value;
-  document.getElementById("name").disabled = true;
+  room = document.getElementById("room").value;
+  if(!room) return
+  document.getElementById("room").disabled = true;
   document.getElementById("start-btn").hidden = true;
   document.getElementById("roll-button").hidden = false;
-  currentPlayer = new Player(players.length, name, 0, images[players.length]);
   document.getElementById(
     "current-player"
   ).innerHTML = `<p>Anyone can roll</p>`;
-  socket.emit("join", currentPlayer);
+  currentPlayer = new Player(room, 0,);
+  socket.emit("joinRoom", encryptMessage(JSON.stringify({room, currentPlayer}), socket.id));
 });
 
 document.getElementById("roll-button").addEventListener("click", () => {
   const num = rollDice();
-  currentPlayer.updatePos(num);
-  socket.emit("rollDice", {
+  const newPos = currentPlayer.updatePos(num);
+  socket.emit("rollDice", encryptMessage(JSON.stringify({
     num: num,
     id: currentPlayer.id,
-    pos: currentPlayer.pos,
-  });
+    pos: newPos,
+    room: currentPlayer.room
+  }), socket.id));
 });
 
 function rollDice() {
@@ -126,29 +139,29 @@ function drawPins() {
 }
 
 // Listen for events
-socket.on("join", (data) => {
-  players.push(new Player(players.length, data.name, data.pos, data.img));
-  drawPins();
+socket.on("joinRoom", (data) => {
   document.getElementById(
     "players-table"
-  ).innerHTML += `<tr><td>${data.name}</td><td><img src=${data.img} height=50 width=40></td></tr>`;
-});
-
-socket.on("joined", (data) => {
-  data.forEach((player, index) => {
-    players.push(new Player(index, player.name, player.pos, player.img));
-    console.log(player);
+  ).innerHTML = ``;
+  players = []
+  const {roomPlayers, length} = decryptMessage(data, room)
+  if(currentPlayer.id == null) currentPlayer.id = length
+  roomPlayers.forEach((player) => {
+    const newPlayer = new Player(player.room, player.pos, player.id, `Player ${player.id + 1}`, images[player.id])
+    players.push(newPlayer);
     document.getElementById(
       "players-table"
-    ).innerHTML += `<tr><td>${player.name}</td><td><img src=${player.img}></td></tr>`;
+    ).innerHTML += `<tr><td>${newPlayer.name}</td><td><img src=${newPlayer.img} height=50 width=40></td></tr>`;
   });
   drawPins();
 });
 
-socket.on("rollDice", (data, turn) => {
-  players[data.id].updatePos(data.num);
-  document.getElementById("dice").src = `./images/dice/dice${data.num}.png`;
+socket.on("rollDice", (data) => {
+  const {num, pos, id, turn} = decryptMessage(data, room)
+  players[id].pos = players[id].updatePos(num);
+  document.getElementById("dice").src = `./images/dice/dice${num}.png`;
   drawPins();
+  console.log(turn, players, currentPlayer.id)
 
   if (turn != currentPlayer.id) {
     document.getElementById("roll-button").hidden = true;

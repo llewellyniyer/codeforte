@@ -24,15 +24,15 @@
         <input
           type="text"
           class="form-input"
-          id="name"
-          placeholder="Your name"
+          id="room"
+          placeholder="Room"
           required
         />
         <button class="btn draw-border" id="start-btn">Join</button>
       </div>
     </div>
     <div id="players-box">
-      <h3>Players currently online:</h3>
+      <h3 id="players-label">Players currently online:</h3>
       <br>
       <table id="players-table"></table>
     </div>
@@ -42,6 +42,8 @@
       <img src="./images/dice/dice1.png" alt="" id="dice" />
     </div>
     <button class="btn draw-border" id="restart-btn" hidden>Restart</button>
+    <script src="js/crypto-js/crypto-js.js"></script>
+    <script src="js/crypto-js/crypto-js-aes.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script src="js/index.js"></script>
   </body>
