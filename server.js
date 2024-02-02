@@ -16,6 +16,7 @@ const io = socket(server);
 
 // Players array
 let users = {};
+const scoreboard = {};
 
 function encryptMessage(message, key) {
   return CryptoJS.AES.encrypt(JSON.stringify(message), key).toString();
@@ -29,7 +30,7 @@ io.on("connection", (socket) => {
   console.log("Made socket connection", socket.id);
 
   socket.on("joinRoom", (data) => {
-    const {room, currentPlayer} = JSON.parse(decryptMessage(data, socket.id));
+    const {room, currentPlayer} = decryptMessage(data, socket.id);
     socket.join(room);
     const players = users[room] || [];
     const {length} = players
@@ -41,7 +42,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("rollDice", (data) => {
-    const diceRoll = JSON.parse(decryptMessage(data, socket.id));
+    const diceRoll = decryptMessage(data, socket.id);
     const {room, num, pos, id} = diceRoll;
     const players = users[room]
     users[room][id].pos = pos;
@@ -50,9 +51,18 @@ io.on("connection", (socket) => {
     io.to(room).emit("rollDice", encryptedMessage);
   });
 
-  socket.on("restart", () => {
-    users = [];
-    io.sockets.emit("restart");
+  socket.on("restart", (data) => {
+    const {room, winner} = decryptMessage(data, socket.id);
+    const roomScoreboard = scoreboard[room] || {};
+    const userScore = roomScoreboard[winner.id] || {
+      name: winner.name,
+      score: 0
+    }
+    userScore.score += 1;
+    roomScoreboard[winner.id] = userScore
+    scoreboard[room] = roomScoreboard;
+    const encryptedMessage = encryptMessage({scoreboard: scoreboard[room]}, room);
+    io.to(room).emit("restart", encryptedMessage);
   });
 });
 

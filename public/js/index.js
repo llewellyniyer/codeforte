@@ -11,7 +11,9 @@ function decryptMessage(encryptedMessage, key) {
 }
 
 let players = []; // All players in the game
+let winner;
 let room = '';
+let scoreboard = {};
 let currentPlayer; // Player object for individual players
 
 let canvas = document.getElementById("canvas");
@@ -111,18 +113,18 @@ document.getElementById("start-btn").addEventListener("click", () => {
     "current-player"
   ).innerHTML = `<p>Anyone can roll</p>`;
   currentPlayer = new Player(room, 0,);
-  socket.emit("joinRoom", encryptMessage(JSON.stringify({room, currentPlayer}), socket.id));
+  socket.emit("joinRoom", encryptMessage({room, currentPlayer}, socket.id));
 });
 
 document.getElementById("roll-button").addEventListener("click", () => {
   const num = rollDice();
   const newPos = currentPlayer.updatePos(num);
-  socket.emit("rollDice", encryptMessage(JSON.stringify({
+  socket.emit("rollDice", encryptMessage({
     num: num,
     id: currentPlayer.id,
     pos: newPos,
     room: currentPlayer.room
-  }), socket.id));
+  }, socket.id));
 });
 
 function rollDice() {
@@ -161,7 +163,6 @@ socket.on("rollDice", (data) => {
   players[id].pos = players[id].updatePos(num);
   document.getElementById("dice").src = `./images/dice/dice${num}.png`;
   drawPins();
-  console.log(turn, players, currentPlayer.id)
 
   if (turn != currentPlayer.id) {
     document.getElementById("roll-button").hidden = true;
@@ -175,7 +176,6 @@ socket.on("rollDice", (data) => {
     ).innerHTML = `<p>It's your turn</p>`;
   }
 
-  let winner;
   for (let i = 0; i < players.length; i++) {
     if (players[i].pos == 99) {
       winner = players[i];
@@ -184,9 +184,27 @@ socket.on("rollDice", (data) => {
   }
 
   if (winner) {
+    const score = scoreboard[winner.id] ?? {
+      name: winner.name,
+      score: 0
+    };
+    score.score += 1;
+    scoreboard[winner.id] = score
     document.getElementById(
       "current-player"
     ).innerHTML = `<p>${winner.name} has won!</p>`;
+    
+    document.getElementById(
+      "players-table"
+    ).innerHTML = '';
+    document.getElementById(
+      "players-label"
+    ).innerHTML = `Scoreboard`;
+    Object.values(scoreboard).forEach(({name, score}) => {
+      document.getElementById(
+        "players-table"
+      ).innerHTML += `<tr><td>${name}</td><td>${score}</td></tr>`;
+    });
     document.getElementById("roll-button").hidden = true;
     document.getElementById("dice").hidden = true;
     document.getElementById("restart-btn").hidden = false;
@@ -195,9 +213,35 @@ socket.on("rollDice", (data) => {
 
 // Logic to restart the game
 document.getElementById("restart-btn").addEventListener("click", () => {
-  socket.emit("restart");
+  socket.emit("restart", encryptMessage({room, winner}, socket.id));
 });
 
-socket.on("restart", () => {
-  window.location.reload();
+socket.on("restart", (data) => {
+  ({scoreboard} = decryptMessage(data, room))
+  document.getElementById(
+    "players-label"
+  ).innerHTML = `Players currently online:`;
+  players.forEach((player) => {
+    document.getElementById(
+      "players-table"
+    ).innerHTML = ``;
+  });
+  players.forEach((player) => {
+    document.getElementById(
+      "players-table"
+    ).innerHTML += `<tr><td>${player.name}</td><td><img src=${player.img} height=50 width=40></td></tr>`;
+  });
+  document.getElementById("room").disabled = true;
+  document.getElementById("start-btn").hidden = true;
+  document.getElementById("roll-button").hidden = false;
+  document.getElementById("restart-btn").hidden = true;
+  document.getElementById("dice").hidden = false;
+  document.getElementById(
+    "current-player"
+  ).innerHTML = `<p>Anyone can roll</p>`;
+  for (let index = 0; index < players.length; index++) {
+    players[index].pos = 0;
+  }
+  winner = null
+  drawPins();
 });
