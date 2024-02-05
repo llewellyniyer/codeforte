@@ -37,7 +37,8 @@ io.on("connection", (socket) => {
     currentPlayer.id = length;
     players.push(currentPlayer);
     users[room] = players
-    const encryptedMessage = encryptMessage({roomPlayers: players, length}, room);
+    const roomScoreboard = scoreboard[room] || {};
+    const encryptedMessage = encryptMessage({roomPlayers: players, length, roomScoreboard}, room);
     io.to(room).emit("joinRoom", encryptedMessage);
   });
 

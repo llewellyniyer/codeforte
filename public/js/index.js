@@ -15,6 +15,19 @@ let winner;
 let room = '';
 let scoreboard = {};
 let currentPlayer; // Player object for individual players
+let showingScoreboard;
+const components = {
+  table: "players-table",
+  labelTable: "players-label",
+  buttonStart: "start-btn",
+  inputForm: "form-input",
+  buttonRoll: "roll-button",
+  labelTurn: "current-player",
+  imageDice: "dice",
+  buttonRestart: "restart-btn",
+};
+
+Object.keys(components).forEach((key) => {components[key] = document.getElementById(components[key])});
 
 let canvas = document.getElementById("canvas");
 canvas.width = document.documentElement.clientHeight * 0.9;
@@ -54,9 +67,8 @@ const snakes = [
 ];
 
 class Player {
-  constructor(room, pos, id = null, name = null, img = null) {
+  constructor(pos, name = null, id = null, img = null) {
     this.id = id;
-    this.room = room;
     this.name = name;
     this.pos = pos;
     this.img = img;
@@ -103,85 +115,97 @@ class Player {
   }
 }
 
-document.getElementById("start-btn").addEventListener("click", () => {
-  room = document.getElementById("room").value;
-  if(!room) return
-  document.getElementById("room").disabled = true;
-  document.getElementById("start-btn").hidden = true;
-  document.getElementById("roll-button").hidden = false;
-  document.getElementById(
-    "current-player"
-  ).innerHTML = `<p>Anyone can roll</p>`;
-  currentPlayer = new Player(room, 0,);
-  socket.emit("joinRoom", encryptMessage({room, currentPlayer}, socket.id));
-});
+function renderScoreboard() {
+  renderTable(
+    Object.values(scoreboard).sort((a, b) => b.score - a.score).map(({name, score}) => `<tr><td>${name}</td><td>${score}</td></tr>`),
+    false,
+  );
+}
 
-document.getElementById("roll-button").addEventListener("click", () => {
+function renderPlayers() {
+  renderTable(
+    players.map(({name, img}) => `<tr><td>${name}</td><td><img src=${img} height=50 width=40></td></tr>`),
+    true,
+  );
+}
+
+function renderTable(rows, showingPlayers) {
+  components.table.innerHTML = '';
+  components.labelTable.innerHTML = showingPlayers ? `Players currently online:` : `Scoreboard:`;
+  rows.forEach((row) => {
+    components.table.innerHTML += row;
+  });
+  components.buttonStart.innerText = showingPlayers ? 'Players' : 'Score';
+  showingScoreboard = !showingPlayers;
+}
+
+components.buttonStart.addEventListener("click", () => {
+  const {value} = components.inputForm;
+  if(!value) return alert('Please enter something');
+  if(!room) {
+    room = value;   
+    components.inputForm.placeholder = 'Name'
+    components.inputForm.value = '';
+    components.buttonStart.innerText = 'Join'
+    return;
+  }
+  if(!currentPlayer) {
+    components.inputForm.disabled = true;
+    components.buttonRoll.hidden = false;
+    components.labelTurn.innerHTML = `<p>Anyone can roll</p>`;
+    currentPlayer = new Player(0, value);
+    socket.emit("joinRoom", encryptMessage({room, currentPlayer}, socket.id));
+    return;
+  }
+  if(!showingScoreboard) {
+    return renderScoreboard(); 
+  }
+  renderPlayers();
+})
+
+components.buttonRoll.addEventListener("click", () => {
   const num = rollDice();
   const newPos = currentPlayer.updatePos(num);
   socket.emit("rollDice", encryptMessage({
     num: num,
     id: currentPlayer.id,
     pos: newPos,
-    room: currentPlayer.room
+    room
   }, socket.id));
 });
 
 function rollDice() {
-  const number = Math.ceil(Math.random() * 6);
-  return number;
+  return Math.ceil(Math.random() * 6);
 }
 
 function drawPins() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  players.forEach((player) => {
-    player.draw();
-  });
+  players.forEach((player) => player.draw());
 }
 
 // Listen for events
 socket.on("joinRoom", (data) => {
-  document.getElementById(
-    "players-table"
-  ).innerHTML = ``;
-  players = []
-  const {roomPlayers, length} = decryptMessage(data, room)
+  const {roomPlayers, length, roomScoreboard} = decryptMessage(data, room)
+  scoreboard = roomScoreboard
   if(currentPlayer.id == null) currentPlayer.id = length
-  roomPlayers.forEach((player) => {
-    const newPlayer = new Player(player.room, player.pos, player.id, `Player ${player.id + 1}`, images[player.id])
-    players.push(newPlayer);
-    document.getElementById(
-      "players-table"
-    ).innerHTML += `<tr><td>${newPlayer.name}</td><td><img src=${newPlayer.img} height=50 width=40></td></tr>`;
-  });
+  players = roomPlayers.map((player) => new Player(player.pos, player.name,  player.id, images[player.id]))
+  renderPlayers();
   drawPins();
 });
 
 socket.on("rollDice", (data) => {
   const {num, pos, id, turn} = decryptMessage(data, room)
   players[id].pos = players[id].updatePos(num);
-  document.getElementById("dice").src = `./images/dice/dice${num}.png`;
+  components.imageDice.src = `./images/dice/dice${num}.png`;
   drawPins();
 
-  if (turn != currentPlayer.id) {
-    document.getElementById("roll-button").hidden = true;
-    document.getElementById(
-      "current-player"
-    ).innerHTML = `<p>It's ${players[turn].name}'s turn</p>`;
-  } else {
-    document.getElementById("roll-button").hidden = false;
-    document.getElementById(
-      "current-player"
-    ).innerHTML = `<p>It's your turn</p>`;
-  }
+  const myTurn = turn == currentPlayer.id
+  components.buttonRoll.hidden = !myTurn;
+  components.labelTurn.innerHTML = !myTurn 
+    ? `<p>It's ${players[turn].name}'s turn</p>`
+    : `<p>It's your turn</p>`
 
-  for (let i = 0; i < players.length; i++) {
-    if (players[i].pos == 99) {
-      winner = players[i];
-      break;
-    }
-  }
+  winner = players.find(({pos}) => pos == 99)
 
   if (winner) {
     const score = scoreboard[winner.id] ?? {
@@ -190,55 +214,26 @@ socket.on("rollDice", (data) => {
     };
     score.score += 1;
     scoreboard[winner.id] = score
-    document.getElementById(
-      "current-player"
-    ).innerHTML = `<p>${winner.name} has won!</p>`;
+    components.labelTurn.innerHTML = `<p>${winner.name} has won!</p>`;
     
-    document.getElementById(
-      "players-table"
-    ).innerHTML = '';
-    document.getElementById(
-      "players-label"
-    ).innerHTML = `Scoreboard`;
-    Object.values(scoreboard).forEach(({name, score}) => {
-      document.getElementById(
-        "players-table"
-      ).innerHTML += `<tr><td>${name}</td><td>${score}</td></tr>`;
-    });
-    document.getElementById("roll-button").hidden = true;
-    document.getElementById("dice").hidden = true;
-    document.getElementById("restart-btn").hidden = false;
+    renderScoreboard();
+    components.buttonRoll.hidden = true;
+    components.imageDice.hidden = true;
+    components.buttonRestart.hidden = false;
   }
 });
 
 // Logic to restart the game
-document.getElementById("restart-btn").addEventListener("click", () => {
+components.buttonRestart.addEventListener("click", () => {
   socket.emit("restart", encryptMessage({room, winner}, socket.id));
 });
 
 socket.on("restart", (data) => {
   ({scoreboard} = decryptMessage(data, room))
-  document.getElementById(
-    "players-label"
-  ).innerHTML = `Players currently online:`;
-  players.forEach((player) => {
-    document.getElementById(
-      "players-table"
-    ).innerHTML = ``;
-  });
-  players.forEach((player) => {
-    document.getElementById(
-      "players-table"
-    ).innerHTML += `<tr><td>${player.name}</td><td><img src=${player.img} height=50 width=40></td></tr>`;
-  });
-  document.getElementById("room").disabled = true;
-  document.getElementById("start-btn").hidden = true;
-  document.getElementById("roll-button").hidden = false;
-  document.getElementById("restart-btn").hidden = true;
-  document.getElementById("dice").hidden = false;
-  document.getElementById(
-    "current-player"
-  ).innerHTML = `<p>Anyone can roll</p>`;
+  components.buttonRoll.hidden = false;
+  components.buttonRestart.hidden = true;
+  components.imageDice.hidden = false;
+  components.labelTable.innerHTML = `<p>Anyone can roll</p>`;
   for (let index = 0; index < players.length; index++) {
     players[index].pos = 0;
   }

@@ -138,16 +138,23 @@ body {
 #current-player {
   position: absolute;
   bottom: 35%;
-  right: 25%;
+  left: 72%;
   color: azure;
   font-size: 1.4rem;
   font-family: "Roboto Slab", sans-serif;
-  text-align: center;
+  text-align: left;
+}
+
+#players-label {
+  color: azure;
+  font-size: 1.4rem;
+  font-family: "Roboto Slab", sans-serif;
+  text-align: left;
 }
 
 #restart-btn {
   position: absolute;
-  right: 20%;
+  right: 18%;
   bottom: 16%;
 }
 
@@ -158,4 +165,6 @@ body {
 
 #players-table td {
   padding-right: 20px;
+  justify-content: space-between;
+  width: 30vh;
 }
