@@ -11,7 +11,6 @@ function decryptMessage(encryptedMessage, key) {
 }
 
 let players = []; // All players in the game
-let winner;
 let room = '';
 let scoreboard = {};
 let currentPlayer; // Player object for individual players
@@ -117,7 +116,7 @@ class Player {
 
 function renderScoreboard() {
   renderTable(
-    Object.values(scoreboard).sort((a, b) => b.score - a.score).map(({name, score}) => `<tr><td>${name}</td><td>${score}</td></tr>`),
+    Object.entries(scoreboard).sort((a, b) => b[1] - a[1]).map(([name, score]) => `<tr><td>${name}</td><td>${score}</td></tr>`),
     false,
   );
 }
@@ -135,7 +134,7 @@ function renderTable(rows, showingPlayers) {
   rows.forEach((row) => {
     components.table.innerHTML += row;
   });
-  components.buttonStart.innerText = showingPlayers ? 'Players' : 'Score';
+  components.buttonStart.innerText = showingPlayers ? 'Score' : 'Players';
   showingScoreboard = !showingPlayers;
 }
 
@@ -165,7 +164,7 @@ components.buttonStart.addEventListener("click", () => {
 
 components.buttonRoll.addEventListener("click", () => {
   const num = rollDice();
-  const newPos = currentPlayer.updatePos(num);
+  const newPos = players[currentPlayer.id].updatePos(num);
   socket.emit("rollDice", encryptMessage({
     num: num,
     id: currentPlayer.id,
@@ -194,8 +193,8 @@ socket.on("joinRoom", (data) => {
 });
 
 socket.on("rollDice", (data) => {
-  const {num, pos, id, turn} = decryptMessage(data, room)
-  players[id].pos = players[id].updatePos(num);
+  const {num, pos, id, turn, winner, roomScoreboard} = decryptMessage(data, room)
+  players[id].pos = pos;
   components.imageDice.src = `./images/dice/dice${num}.png`;
   drawPins();
 
@@ -205,17 +204,9 @@ socket.on("rollDice", (data) => {
     ? `<p>It's ${players[turn].name}'s turn</p>`
     : `<p>It's your turn</p>`
 
-  winner = players.find(({pos}) => pos == 99)
-
   if (winner) {
-    const score = scoreboard[winner.id] ?? {
-      name: winner.name,
-      score: 0
-    };
-    score.score += 1;
-    scoreboard[winner.id] = score
+    scoreboard = roomScoreboard
     components.labelTurn.innerHTML = `<p>${winner.name} has won!</p>`;
-    
     renderScoreboard();
     components.buttonRoll.hidden = true;
     components.imageDice.hidden = true;
@@ -225,18 +216,15 @@ socket.on("rollDice", (data) => {
 
 // Logic to restart the game
 components.buttonRestart.addEventListener("click", () => {
-  socket.emit("restart", encryptMessage({room, winner}, socket.id));
+  socket.emit("restart", encryptMessage({room}, socket.id));
 });
 
 socket.on("restart", (data) => {
-  ({scoreboard} = decryptMessage(data, room))
+  const {roomPlayers} = decryptMessage(data, room)
+  players = roomPlayers.map((player) => new Player(player.pos, player.name,  player.id, images[player.id]))
   components.buttonRoll.hidden = false;
   components.buttonRestart.hidden = true;
   components.imageDice.hidden = false;
   components.labelTable.innerHTML = `<p>Anyone can roll</p>`;
-  for (let index = 0; index < players.length; index++) {
-    players[index].pos = 0;
-  }
-  winner = null
   drawPins();
 });
